@@ -22,7 +22,8 @@ var map = new mapboxgl.Map({
 
 map.addControl(new mapboxgl.NavigationControl())
 
-// filters for classifying earthquakes into five categories based on magnitude
+// filters for classifying aur quality into five categories based on severity
+// ToDo - I don't know what good thresholds for this should be
 var aqi1 = ["<", ["get", "aqi"], 40]
 
 var aqi2 = ["all", [">=", ["get", "aqi"], 40],
@@ -174,13 +175,13 @@ map.on('load', function () {
               },
               "out.s1": blueSvPrefix,
               "out.s6": {"$exists": true},
-              "blk.i": { "$gt": 60550 }
+              "blk.i": { "$gt": 60550 } // Make sure we're only looking at newer data format
             }
           },{
             "$sort": { "blk.t" : -1 }
           },{
             "$group": {
-              "_id": "$blk.i",
+              "_id": "$out.s3",
               "city": {"$first": "$out.s3"},
               "time": {"$first": "$out.s4"},
               "city_data": {"$first": "$out.s5"},
