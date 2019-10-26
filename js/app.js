@@ -13,17 +13,18 @@ var map = new mapboxgl.Map({
 map.addControl(new mapboxgl.NavigationControl())
 
 // filters for classifying earthquakes into five categories based on magnitude
-var aqi1 = ["<", ["get", "aqi"], 2];
-var aqi2 = ["all", [">=", ["get", "aqi"], 2],
-  ["<", ["get", "aqi"], 3]
+var aqi1 = ["<", ["get", "aqi"], 40]
+
+var aqi2 = ["all", [">=", ["get", "aqi"], 40],
+  ["<", ["get", "aqi"], 60]
 ];
-var aqi3 = ["all", [">=", ["get", "aqi"], 3],
-  ["<", ["get", "aqi"], 4]
+var aqi3 = ["all", [">=", ["get", "aqi"], 60],
+  ["<", ["get", "aqi"], 80]
 ];
-var aqi4 = ["all", [">=", ["get", "aqi"], 4],
-  ["<", ["get", "aqi"], 5]
+var aqi4 = ["all", [">=", ["get", "aqi"], 80],
+  ["<", ["get", "aqi"], 100]
 ];
-var aqi5 = [">=", ["get", "aqi"], 5];
+var aqi5 = [">=", ["get", "aqi"], 100]
 
 // colors to use for the categories
 var colors = ['#fed976', '#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c'];
@@ -38,64 +39,60 @@ map.on('load', function () {
 
   queryAirQuality().then(aqi => {
     let final = []
+    console.log('map this', aqi)
     let filtered = aqi.map(a => {
-      let outs = a.out.filter(o => { return o.s1 === blueSvPrefix })
-
       let output = {}
-      output.s2 = outs[0].s2
-      output.s3 = outs[0].s3
-      output.s4 = outs[0].s4
-      output.s5 = JSON.parse(outs[0].s5)
-      //... fill input data here
+      output.city = a.city[0]
+      output.city_data = JSON.parse(a.city_data[0])
+      output.time = a.time[0]
+
+      // decompress out.b6
       try {
-        output.s6 = JSON.parse(pako.ungzip(atob(outs[0].b6), { to: 'string' }))
+        // console.log('decoding', a.sensors[0])
+        output.sensors = JSON.parse(pako.ungzip(atob(a.sensors[0]), { to: 'string' }))
+        // console.log('got', output.sensors)
       } catch (e) {
         console.log('err', e)
       }      
       
       return output
+    }).filter(o => { return o.sensors })
 
-      // // S5
-      // // {"aqi":"79","pm25":"37","pm10":"108","so2":"22","no2":"54","co":"0.900","o3":"10","pol":"PM10","qua":"良"}	
-      // // S6
-      // aqi: "32"
-
-      // // { "type": "Feature", "properties": { "id": "us2000aj7l", "mag": 3.0, "time": 1505027344470, "felt": null, "tsunami": 0 }, "geometry": { "type": "Point", "coordinates": [ -111.4316, 42.5611, 7.33 ] } },
-
-      // // data.s6 = new TextDecoder("utf-8").decode(uint8)
-      // console.log('inflated?', data.s6)
-      // return data
-    })
-
+    console.log('filtered', filtered)
     for(let x=0; x < filtered.length; x++) {
       let output = filtered[0]
-      console.log('got', output.s6) // array of points
-      let len = output.s6.length
+      console.log('got', output.sensors) // array of points
+      let len = output.sensors ? output.sensors.length : 0
       while(len--) {
-        let d = {
-          type: 'Feature',
-          properties: {
-            id: Math.random(),
-            aqi: parseInt(output.s5.aqi),
-            time: output.s4,
-            co: output.s6[len].co,
-            no2: output.s6[len].no2,
-            o3: output.s6[len].o3,
-            pm10: output.s6[len].pm10,
-            pm25: output.s6[len].pm25,
-            pol: output.s6[len].pol,
-            so2: output.s6[len].so2,
-            sta: output.s6[len].sta,
-            felt: 0,
-            tsunami: 0
-          },
-          geometry: {
-            type: 'Point',
-            coordinates: [output.s6[len].lo, output.s6[len].la]
+        let lat = output.sensors[len].la
+        let lng = output.sensors[len].lo
+        
+        // Avoid pushing multiple records to same coordinates
+        if (!final.some(a => { return a.geometry.coordinates.some(c => { return c[1] === lat && c[0] === lng }) })) {
+          let d = {
+            type: 'Feature',
+            properties: {
+              id: output.city,
+              aqi: parseInt(output.city_data.aqi),
+              time: output.time,
+              co: output.sensors[len].co,
+              no2: output.sensors[len].no2,
+              o3: output.sensors[len].o3,
+              pm10: output.sensors[len].pm10,
+              pm25: output.sensors[len].pm25,
+              pol: output.sensors[len].pol,
+              so2: output.sensors[len].so2,
+              sta: output.sensors[len].sta,
+            },
+            geometry: {
+              type: 'Point',
+              coordinates: [lng, lat]
+            }
           }
+
+          final.push(d)
         }
 
-        final.push(d)
       }
     }
     data.features = final
@@ -157,12 +154,31 @@ map.on('load', function () {
   
   async function queryAirQuality() {
     let query = {
-      "v": 3,
-      "q": {
-        "find": {
-          "out.s1": "1DSXi8hvxn6Pd4TavhmTKxU7BUqS7cnxhw"
-        },
-        "limit": 500
+      "v":3,
+      "q":{
+        "aggregate": [
+          {
+            "$match": {
+              "$text": {
+                "$search": blueSvPrefix
+              },
+              "out.s1": blueSvPrefix,
+              "out.s6": {"$exists": true},
+              "blk.i": { "$gt": 60550 }
+            }
+          },{
+            "$sort": { "blk.t" : -1 }
+          },{
+            "$group": {
+              "_id": "$out.s3",
+              "city": {"$first": "$out.s3"},
+              "time": {"$first": "$out.s4"},
+              "city_data": {"$first": "$out.s5"},
+              "sensors": {"$first": "$out.b6"}
+            }
+          }
+        ],
+        "limit": 300
       }
     }
 
