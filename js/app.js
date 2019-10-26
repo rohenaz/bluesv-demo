@@ -1,7 +1,17 @@
-mapboxgl.accessToken =
-  'pk.eyJ1Ijoid2lsZHNhdGNobW8iLCJhIjoiY2syN3ZqYTA3MGtuMjNjbzZ0cDN2b2h5NCJ9.csEOdKithNFNwTQa59A5lQ';
-
 const blueSvPrefix = "1DSXi8hvxn6Pd4TavhmTKxU7BUqS7cnxhw"
+
+mapboxgl.accessToken = 'YOUR_MAPBOX_KEY';
+
+// Turn the query into base64 encoded string.
+let url = 'https://genesis.bitdb.network/q/1FnauZ9aUH2Bex6JzdcV4eNX7oLSSEbxtN/'
+
+// Attach API KEY as header
+let header = {
+  // Replace with your API key
+  headers: {
+    key: 'YOUR_BITDB_KEY'
+  }
+}
 
 var map = new mapboxgl.Map({
   container: 'map',
@@ -170,7 +180,7 @@ map.on('load', function () {
             "$sort": { "blk.t" : -1 }
           },{
             "$group": {
-              "_id": "$out.s3",
+              "_id": "$blk.i",
               "city": {"$first": "$out.s3"},
               "time": {"$first": "$out.s4"},
               "city_data": {"$first": "$out.s5"},
@@ -182,16 +192,6 @@ map.on('load', function () {
       }
     }
 
-    // Turn the query into base64 encoded string.
-    let url = 'https://genesis.bitdb.network/q/1FnauZ9aUH2Bex6JzdcV4eNX7oLSSEbxtN/'
-
-    // Attach API KEY as header
-    let header = {
-      // Replace with your API key
-      headers: {
-        key: '1Q2LzB9q5p75PbF77fnNqkcLcs9CXRMxzm'
-      }
-    }
 
     // base 64 query
     let b64 = btoa(JSON.stringify(query))
